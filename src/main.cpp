@@ -9,14 +9,17 @@ const char *ssid = "my-fi";
 const char *password = "my-fipass";
 const uint8_t IS_DARK = D6;
 const uint8_t B_LIGHT = D7;
-const int8_t START_H = 6;
+const int8_t START_H = 7;
 const int8_t END_H = 19;
+
+const int8_t EN_DISP = 7;   // Display enabed time
+const int8_t DIS_DISP = 23; // Display disabled time
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
 uint32_t slowTimer = 0;
-uint32_t slowTimerDelay = 10 * 60 * 1000; // 10 minutes
-uint32 volatile elapsed = 0;    // backlight on counter in seconds
+uint32_t slowTimerDelay = 15 * 60 * 1000; // 10 minutes
+uint32 volatile elapsed = 0;              // backlight on counter in seconds
 bool isBackLightON = false;
 
 WiFiClient espClient;
@@ -63,15 +66,32 @@ void loop()
   fastTimer = millis();
 }
 
+// Main function
 void runFlow()
 {
   if (isBackLightON)
   {
     elapsed += fastTimerDelay / 1000;
   }
-  showTime();
 
   int8_t cHour = timeClient.getHours();
+  // Showing backlight time
+  if (cHour >= EN_DISP && cHour <= DIS_DISP)
+  {
+    showTime();
+  }
+  else
+  {
+    disp.clear();
+  }
+
+  // Resetting counter
+  if (cHour == 23)
+  {
+    elapsed = 0;
+  }
+
+  // Disabling backlight at night
   if (cHour < START_H || cHour > END_H)
   {
     digitalWrite(B_LIGHT, false);
@@ -79,6 +99,7 @@ void runFlow()
     return;
   }
 
+  // Skipping often checks for backlight
   if (millis() - slowTimer <= slowTimerDelay)
   {
     return;
@@ -140,5 +161,5 @@ void wifiConnect()
 
 void showTime()
 {
-  disp.displayClock( elapsed / 3600, elapsed % 3600 / 60);
+  disp.displayClock(elapsed / 3600, elapsed % 3600 / 60);
 }
