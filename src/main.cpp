@@ -13,12 +13,12 @@ const int8_t START_H = 7;
 const int8_t END_H = 19;
 
 const int8_t EN_DISP = 7;   // Display enabed time
-const int8_t DIS_DISP = 23; // Display disabled time
+const int8_t DIS_DISP = 22; // Display disabled time
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
 uint32_t slowTimer = 0;
-uint32_t slowTimerDelay = 15 * 60 * 1000; // 10 minutes
+uint32_t slowTimerDelay = 20 * 60 * 1000; // 20 minutes
 uint32 volatile elapsed = 0;              // backlight on counter in seconds
 bool isBackLightON = false;
 
@@ -86,7 +86,7 @@ void runFlow()
   }
 
   // Resetting counter
-  if (cHour == 23)
+  if (cHour == DIS_DISP)
   {
     elapsed = 0;
   }
