@@ -18,14 +18,15 @@ const int8_t DIS_DISP = 22; // Display disabled time
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
-uint32_t slowTimer = 0;
 uint32_t slowTimerDelay = 20 * 60 * 1000; // 20 minutes
+uint32_t slowTimer = slowTimerDelay;
 uint32_t sendStatDelay = 1 * 60 * 1000;   // 1 minute
 uint32 volatile elapsed = 0;              // backlight on counter in seconds
 bool isBackLightON = false;
 
 const char *mqtt_server = "192.168.10.100";
 const char *TOPIC = "domoticz/in";
+const uint8_t TRIES = 3;
 int stat_idx = 1;
 
 WiFiClient espClient;
@@ -185,12 +186,21 @@ void showTime()
 // Connect to MQTT Server
 void mqttconnect()
 {
+  static uint8_t tries;
   while (!mqttClient.connected())
   {
+    if (tries >= TRIES){
+      tries = 0;
+      return;
+    }
+
     if (mqttClient.connect("plants_stat"))
     {
       mqttClient.subscribe(TOPIC);
+      tries = 0;
     }
+
+    tries++;
   }
 }
 
