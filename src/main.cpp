@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <GyverTM1637.h>
 #include <NTPClient.h>
@@ -19,11 +20,17 @@ uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
 uint32_t slowTimer = 0;
 uint32_t slowTimerDelay = 20 * 60 * 1000; // 20 minutes
+uint32_t sendStatDelay = 1 * 60 * 1000;   // 1 minute
 uint32 volatile elapsed = 0;              // backlight on counter in seconds
 bool isBackLightON = false;
 
+const char *mqtt_server = "192.168.10.100";
+const char *TOPIC = "domoticz/in";
+int stat_idx = 1;
+
 WiFiClient espClient;
 GyverTM1637 disp(D1, D2);
+PubSubClient mqttClient(espClient);
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 60 * 60 * 3, 60 * 60 * 24);
@@ -31,7 +38,9 @@ NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 60 * 60 * 3, 60 * 60 * 24);
 void wifiConnect();
 void initOTA();
 void showTime();
+void sendStat();
 void runFlow();
+void mqttconnect();
 
 void setup()
 {
@@ -49,6 +58,7 @@ void setup()
   disp.clear();
   disp.brightness(0);
   timeClient.begin();
+  mqttClient.setServer(mqtt_server, 1883);
 }
 
 void loop()
@@ -61,6 +71,12 @@ void loop()
   {
     return;
   }
+
+  if (!mqttClient.connected())
+  {
+    mqttconnect();
+  }
+  mqttClient.loop();
 
   runFlow();
   fastTimer = millis();
@@ -79,6 +95,7 @@ void runFlow()
   if (cHour >= EN_DISP && cHour <= DIS_DISP)
   {
     showTime();
+    sendStat();
   }
   else
   {
@@ -159,7 +176,40 @@ void wifiConnect()
   Serial.println(WiFi.localIP());
 }
 
+// Show time on display
 void showTime()
 {
   disp.displayClock(elapsed / 3600, elapsed % 3600 / 60);
+}
+
+// Connect to MQTT Server
+void mqttconnect()
+{
+  while (!mqttClient.connected())
+  {
+    if (mqttClient.connect("plants_stat"))
+    {
+      mqttClient.subscribe(TOPIC);
+    }
+  }
+}
+
+// Sending stat to Domoticz
+void sendStat()
+{
+  static uint32_t timer;
+  if (millis() - timer <= sendStatDelay)
+  {
+    return;
+  }
+  timer = millis();
+  if (!isBackLightON){
+    return;
+  }
+
+  String in_str = "{\"idx\":" + String(stat_idx) + ",\"svalue\":\"60\"}";
+  if (!mqttClient.publish(TOPIC, in_str.c_str()))
+  {
+    mqttconnect();
+  }
 }
