@@ -15,7 +15,7 @@ const int8_t END_H = 19;
 
 const int8_t EN_DISP = 7;   // Display enabed time
 const int8_t DIS_DISP = 22; // Display disabled time
-const float LUX_THRESHOLD = 400;
+const float LUX_THRESHOLD = 2000;
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
@@ -53,19 +53,28 @@ void setup()
   pinMode(B_LIGHT, OUTPUT);
   digitalWrite(B_LIGHT, false);
 
-  Wire.begin(D2, D1);
-   if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {
-    Serial.println(F("BH1750 Advanced begin"));
-  } else {
-    Serial.println(F("Error initialising BH1750"));
-  }
-
   wifiConnect();
   initOTA();
 
+  // lux sensor init
+  Wire.begin(D2, D1);
+  if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE))
+  {
+    Serial.println(F("BH1750 Advanced begin"));
+  }
+  else
+  {
+    Serial.println(F("Error initialising BH1750"));
+  }
+
+  if (lightMeter.measurementReady())
+  {
+    lux_val = lightMeter.readLightLevel();
+  }
+
+  // time client and mqtt
   timeClient.begin();
   mqttClient.setServer(mqtt_server, 1883);
-  readLuxSendStat();
 }
 
 void loop()
@@ -200,11 +209,7 @@ void mqttconnect()
   }
 }
 
-void readLuxSensor()
-{
-}
-
-// Sending stat to Domoticz
+// Reads lux sensor value and sends stat to Domoticz
 void readLuxSendStat()
 {
   static uint32_t timer;
@@ -219,6 +224,8 @@ void readLuxSendStat()
     lux_val = lightMeter.readLightLevel();
   }
 
+  String in_lux_str = "{\"idx\":" + String(stat_lux_idx) + ",\"svalue\":\"" + String(lux_val, 0) + "\"}";
+  mqttClient.publish(TOPIC, in_lux_str.c_str());
 
   if (!isBackLightON)
   {
@@ -227,7 +234,4 @@ void readLuxSendStat()
 
   String in_c_str = "{\"idx\":" + String(stat_c_idx) + ",\"svalue\":\"" + sendStatDelay / 1000 + "\"}";
   mqttClient.publish(TOPIC, in_c_str.c_str());
-
-  String in_lux_str = "{\"idx\":" + String(stat_lux_idx) + ",\"svalue\":\"" + String(lux_val, 0) + "\"}";
-  mqttClient.publish(TOPIC, in_lux_str.c_str());
 }
