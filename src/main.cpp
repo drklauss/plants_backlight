@@ -13,15 +13,17 @@ const uint8_t B_LIGHT = D7;
 const int8_t START_H = 7;
 const int8_t END_H = 19;
 
-const int8_t EN_DISP = 7;   // Display enabed time
-const int8_t DIS_DISP = 22; // Display disabled time
-const float LUX_THRESHOLD = 2000;
+const int8_t EN_STAT_SEND = 5;   // Display enabed time
+const int8_t DIS_STAT_SEND = 22; // Display disabled time
+const float LUX_THRESHOLD = 5000;
+const uint8_t LAMP_COUNT = 4;
+const double LAMP_CONSUMPTION  = 0.011111111111111; // consumption in Watt per secod
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
 uint32_t slowTimerDelay = 10 * 60 * 1000; // 10 minutes
 uint32_t slowTimer = slowTimerDelay;
-uint32_t sendStatDelay = 15 * 1000; // 15
+uint32_t sendStatDelay = 15; // 15 seconds
 uint32_t volatile elapsed = 0;      // backlight on counter in seconds
 float lux_val = 0;
 bool isBackLightON = false;
@@ -31,6 +33,7 @@ const char *TOPIC = "domoticz/in";
 const uint8_t TRIES = 3;
 int stat_c_idx = 1;
 int stat_lux_idx = 2;
+int stat_power_idx = 3;
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -108,13 +111,13 @@ void runFlow()
 
   int8_t cHour = timeClient.getHours();
   // Showing backlight time
-  if (cHour >= EN_DISP && cHour <= DIS_DISP)
+  if (cHour >= EN_STAT_SEND && cHour <= DIS_STAT_SEND)
   {
     readLuxSendStat();
   }
 
   // Resetting counter
-  if (cHour == DIS_DISP)
+  if (cHour == DIS_STAT_SEND)
   {
     elapsed = 0;
   }
@@ -213,7 +216,7 @@ void mqttconnect()
 void readLuxSendStat()
 {
   static uint32_t timer;
-  if (millis() - timer <= sendStatDelay)
+  if (millis() - timer <= sendStatDelay*1000)
   {
     return;
   }
@@ -232,6 +235,9 @@ void readLuxSendStat()
     return;
   }
 
-  String in_c_str = "{\"idx\":" + String(stat_c_idx) + ",\"svalue\":\"" + sendStatDelay / 1000 + "\"}";
+  String in_c_str = "{\"idx\":" + String(stat_c_idx) + ",\"svalue\":\"" + sendStatDelay + "\"}";
   mqttClient.publish(TOPIC, in_c_str.c_str());
+
+  String in_power_str = "{\"idx\":" + String(stat_power_idx) + ",\"svalue\":\"" + String(LAMP_COUNT * LAMP_CONSUMPTION * sendStatDelay, 2) + "\"}";
+  mqttClient.publish(TOPIC, in_power_str.c_str());
 }
