@@ -2,64 +2,70 @@
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
-#include <GyverTM1637.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <BH1750.h>
+#include <Wire.h>
 
 const char *ssid = "my-fi";
 const char *password = "my-fipass";
-const uint8_t IS_DARK = D6;
 const uint8_t B_LIGHT = D7;
 const int8_t START_H = 7;
 const int8_t END_H = 19;
 
 const int8_t EN_DISP = 7;   // Display enabed time
 const int8_t DIS_DISP = 22; // Display disabled time
+const float LUX_THRESHOLD = 400;
 
 uint32_t fastTimer = 0;
 uint32_t fastTimerDelay = 1000;
-uint32_t slowTimerDelay = 20 * 60 * 1000; // 20 minutes
+uint32_t slowTimerDelay = 10 * 60 * 1000; // 10 minutes
 uint32_t slowTimer = slowTimerDelay;
-uint32_t sendStatDelay = 1 * 60 * 1000;   // 1 minute
-uint32 volatile elapsed = 0;              // backlight on counter in seconds
+uint32_t sendStatDelay = 15 * 1000; // 15
+uint32_t volatile elapsed = 0;      // backlight on counter in seconds
+float lux_val = 0;
 bool isBackLightON = false;
 
 const char *mqtt_server = "192.168.10.100";
 const char *TOPIC = "domoticz/in";
 const uint8_t TRIES = 3;
-int stat_idx = 1;
+int stat_c_idx = 1;
+int stat_lux_idx = 2;
 
 WiFiClient espClient;
-GyverTM1637 disp(D1, D2);
 PubSubClient mqttClient(espClient);
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 60 * 60 * 3, 60 * 60 * 24);
+BH1750 lightMeter(0x23);
 
 void wifiConnect();
 void initOTA();
-void showTime();
-void sendStat();
+void readLuxSendStat();
 void runFlow();
 void mqttconnect();
 
 void setup()
 {
-  pinMode(D1, OUTPUT);
-  pinMode(D2, OUTPUT);
+  Serial.begin(115200);
+
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(IS_DARK, INPUT);
   pinMode(B_LIGHT, OUTPUT);
   digitalWrite(B_LIGHT, false);
 
-  Serial.begin(115200);
+  Wire.begin(D2, D1);
+   if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {
+    Serial.println(F("BH1750 Advanced begin"));
+  } else {
+    Serial.println(F("Error initialising BH1750"));
+  }
+
   wifiConnect();
   initOTA();
 
-  disp.clear();
-  disp.brightness(0);
   timeClient.begin();
   mqttClient.setServer(mqtt_server, 1883);
+  readLuxSendStat();
 }
 
 void loop()
@@ -95,12 +101,7 @@ void runFlow()
   // Showing backlight time
   if (cHour >= EN_DISP && cHour <= DIS_DISP)
   {
-    showTime();
-    sendStat();
-  }
-  else
-  {
-    disp.clear();
+    readLuxSendStat();
   }
 
   // Resetting counter
@@ -123,7 +124,7 @@ void runFlow()
     return;
   }
 
-  if (digitalRead(IS_DARK))
+  if (lux_val <= LUX_THRESHOLD)
   {
     digitalWrite(B_LIGHT, true);
     isBackLightON = true;
@@ -177,19 +178,14 @@ void wifiConnect()
   Serial.println(WiFi.localIP());
 }
 
-// Show time on display
-void showTime()
-{
-  disp.displayClock(elapsed / 3600, elapsed % 3600 / 60);
-}
-
 // Connect to MQTT Server
 void mqttconnect()
 {
   static uint8_t tries;
   while (!mqttClient.connected())
   {
-    if (tries >= TRIES){
+    if (tries >= TRIES)
+    {
       tries = 0;
       return;
     }
@@ -204,8 +200,12 @@ void mqttconnect()
   }
 }
 
+void readLuxSensor()
+{
+}
+
 // Sending stat to Domoticz
-void sendStat()
+void readLuxSendStat()
 {
   static uint32_t timer;
   if (millis() - timer <= sendStatDelay)
@@ -213,13 +213,21 @@ void sendStat()
     return;
   }
   timer = millis();
-  if (!isBackLightON){
+
+  if (lightMeter.measurementReady())
+  {
+    lux_val = lightMeter.readLightLevel();
+  }
+
+
+  if (!isBackLightON)
+  {
     return;
   }
 
-  String in_str = "{\"idx\":" + String(stat_idx) + ",\"svalue\":\"60\"}";
-  if (!mqttClient.publish(TOPIC, in_str.c_str()))
-  {
-    mqttconnect();
-  }
+  String in_c_str = "{\"idx\":" + String(stat_c_idx) + ",\"svalue\":\"" + sendStatDelay / 1000 + "\"}";
+  mqttClient.publish(TOPIC, in_c_str.c_str());
+
+  String in_lux_str = "{\"idx\":" + String(stat_lux_idx) + ",\"svalue\":\"" + String(lux_val, 0) + "\"}";
+  mqttClient.publish(TOPIC, in_lux_str.c_str());
 }
